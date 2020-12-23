@@ -1,0 +1,299 @@
+
+
+Introduction
+As we discussed in the videos, despite the popularity of more powerful libraries such as PyToch and TensorFlow, they are not easy to use and have a steep learning curve. So, for people who are just starting to learn deep learning, there is no better library to use other than the Keras library.
+
+Keras is a high-level API for building deep learning models. It has gained favor for its ease of use and syntactic simplicity facilitating fast development. As you will see in this lab and the other labs in this course, building a very complex deep learning network can be achieved with Keras with only few lines of code. You will appreciate Keras even more, once you learn how to build deep models using PyTorch and TensorFlow in the other courses.
+
+So, in this lab, you will learn how to use the Keras library to build a regression model.
+
+Table of Contents
+
+Download and Clean Dataset
+Let's start by importing the pandas and the Numpy libraries.
+
+In [16]:
+import pandas as pd
+import numpy as np
+We will be playing around with the same dataset that we used in the videos.
+
+The dataset is about the compressive strength of different samples of concrete based on the volumes of the different ingredients that were used to make them. Ingredients include:
+
+1. Cement
+
+2. Blast Furnace Slag
+
+3. Fly Ash
+
+4. Water
+
+5. Superplasticizer
+
+6. Coarse Aggregate
+
+7. Fine Aggregate
+
+Let's download the data and read it into a pandas dataframe.
+
+In [17]:
+concrete_data = pd.read_csv('https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/DL0101EN/labs/data/concrete_data.csv')
+concrete_data.head()
+Out[17]:
+Cement	Blast Furnace Slag	Fly Ash	Water	Superplasticizer	Coarse Aggregate	Fine Aggregate	Age	Strength
+0	540.0	0.0	0.0	162.0	2.5	1040.0	676.0	28	79.99
+1	540.0	0.0	0.0	162.0	2.5	1055.0	676.0	28	61.89
+2	332.5	142.5	0.0	228.0	0.0	932.0	594.0	270	40.27
+3	332.5	142.5	0.0	228.0	0.0	932.0	594.0	365	41.05
+4	198.6	132.4	0.0	192.0	0.0	978.4	825.5	360	44.30
+So the first concrete sample has 540 cubic meter of cement, 0 cubic meter of blast furnace slag, 0 cubic meter of fly ash, 162 cubic meter of water, 2.5 cubic meter of superplaticizer, 1040 cubic meter of coarse aggregate, 676 cubic meter of fine aggregate. Such a concrete mix which is 28 days old, has a compressive strength of 79.99 MPa.
+
+Let's check how many data points we have.
+In [18]:
+concrete_data.shape
+Out[18]:
+(1030, 9)
+So, there are approximately 1000 samples to train our model on. Because of the few samples, we have to be careful not to overfit the training data.
+
+Let's check the dataset for any missing values.
+
+In [19]:
+concrete_data.describe()
+Out[19]:
+Cement	Blast Furnace Slag	Fly Ash	Water	Superplasticizer	Coarse Aggregate	Fine Aggregate	Age	Strength
+count	1030.000000	1030.000000	1030.000000	1030.000000	1030.000000	1030.000000	1030.000000	1030.000000	1030.000000
+mean	281.167864	73.895825	54.188350	181.567282	6.204660	972.918932	773.580485	45.662136	35.817961
+std	104.506364	86.279342	63.997004	21.354219	5.973841	77.753954	80.175980	63.169912	16.705742
+min	102.000000	0.000000	0.000000	121.800000	0.000000	801.000000	594.000000	1.000000	2.330000
+25%	192.375000	0.000000	0.000000	164.900000	0.000000	932.000000	730.950000	7.000000	23.710000
+50%	272.900000	22.000000	0.000000	185.000000	6.400000	968.000000	779.500000	28.000000	34.445000
+75%	350.000000	142.950000	118.300000	192.000000	10.200000	1029.400000	824.000000	56.000000	46.135000
+max	540.000000	359.400000	200.100000	247.000000	32.200000	1145.000000	992.600000	365.000000	82.600000
+In [20]:
+concrete_data.isnull().sum()
+Out[20]:
+Cement                0
+Blast Furnace Slag    0
+Fly Ash               0
+Water                 0
+Superplasticizer      0
+Coarse Aggregate      0
+Fine Aggregate        0
+Age                   0
+Strength              0
+dtype: int64
+The data looks very clean and is ready to be used to build our model.
+
+Split data into predictors and target
+The target variable in this problem is the concrete sample strength. Therefore, our predictors will be all the other columns.
+
+In [21]:
+concrete_data_columns = concrete_data.columns
+
+predictors = concrete_data[concrete_data_columns[concrete_data_columns != 'Strength']] # all columns except Strength
+target = concrete_data['Strength'] # Strength column
+
+Let's do a quick sanity check of the predictors and the target dataframes.
+
+In [22]:
+predictors.head()
+Out[22]:
+Cement	Blast Furnace Slag	Fly Ash	Water	Superplasticizer	Coarse Aggregate	Fine Aggregate	Age
+0	540.0	0.0	0.0	162.0	2.5	1040.0	676.0	28
+1	540.0	0.0	0.0	162.0	2.5	1055.0	676.0	28
+2	332.5	142.5	0.0	228.0	0.0	932.0	594.0	270
+3	332.5	142.5	0.0	228.0	0.0	932.0	594.0	365
+4	198.6	132.4	0.0	192.0	0.0	978.4	825.5	360
+In [23]:
+target.head()
+Out[23]:
+0    79.99
+1    61.89
+2    40.27
+3    41.05
+4    44.30
+Name: Strength, dtype: float64
+Finally, the last step is to normalize the data by substracting the mean and dividing by the standard deviation.
+
+Let's save the number of predictors to n_cols since we will need this number when building our network.
+
+In [24]:
+n_cols = predictors.shape[1] # number of predictors
+
+
+Import Keras
+Recall from the videos that Keras normally runs on top of a low-level library such as TensorFlow. This means that to be able to use the Keras library, you will have to install TensorFlow first and when you import the Keras library, it will be explicitly displayed what backend was used to install the Keras library. In CC Labs, we used TensorFlow as the backend to install Keras, so it should clearly print that when we import Keras.
+
+Let's go ahead and import the Keras library
+In [25]:
+import keras
+As you can see, the TensorFlow backend was used to install the Keras library.
+
+Let's import the rest of the packages from the Keras library that we will need to build our regressoin model.
+
+In [26]:
+from keras.models import Sequential
+from keras.layers import Dense
+A. Build a baseline model (5 marks)
+Use the Keras library to build a neural network with the following:
+
+One hidden layer of 10 nodes, and a ReLU activation function
+
+Use the adam optimizer and the mean squared error as the loss function.
+
+Randomly split the data into a training and test sets by holding 30% of the data for testing. You can use the train_test_split helper function from Scikit-learn.
+
+Train the model on the training data using 50 epochs.
+
+Evaluate the model on the test data and compute the mean squared error between the predicted concrete strength and the actual concrete strength. You can use the mean_squared_error function from Scikit-learn.
+
+Repeat steps 1 - 3, 50 times, i.e., create a list of 50 mean squared errors.
+
+Report the mean and the standard deviation of the mean squared errors.
+
+
+Build a Neural Network
+Let's define a function that defines our regression model for us so that we can conveniently call it to create our model.
+
+In [27]:
+# define regression model
+def regression_model():
+    # create model
+    model = Sequential()
+    model.add(Dense(10, activation='relu', input_shape=(n_cols,)))
+    model.add(Dense(10, activation='relu'))
+    model.add(Dense(1))
+    
+    # compile model
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    return model
+The above function create a model that has two hidden layers, each of 50 hidden units.
+
+
+
+Train and Test the Network
+Let's call the function now to create our model.
+
+In [28]:
+# build the model
+model = regression_model()
+Next, we will train and test the model at the same time using the fit method. We will leave out 30% of the data for validation and we will train the model for 100 epochs.
+
+In [29]:
+# fit the model
+model.fit(predictors_norm, target, validation_split=0.3, epochs=50, verbose=2)
+Train on 721 samples, validate on 309 samples
+Epoch 1/50
+ - 0s - loss: 1686.3766 - val_loss: 1204.1049
+Epoch 2/50
+ - 0s - loss: 1666.7489 - val_loss: 1189.2881
+Epoch 3/50
+ - 0s - loss: 1647.0187 - val_loss: 1173.5927
+Epoch 4/50
+ - 0s - loss: 1623.8520 - val_loss: 1155.3223
+Epoch 5/50
+ - 0s - loss: 1595.0072 - val_loss: 1132.6831
+Epoch 6/50
+ - 0s - loss: 1558.0567 - val_loss: 1104.1562
+Epoch 7/50
+ - 0s - loss: 1512.7214 - val_loss: 1068.4093
+Epoch 8/50
+ - 0s - loss: 1454.8622 - val_loss: 1024.8082
+Epoch 9/50
+ - 0s - loss: 1382.6759 - val_loss: 972.0121
+Epoch 10/50
+ - 0s - loss: 1293.2707 - val_loss: 907.4298
+Epoch 11/50
+ - 0s - loss: 1185.1315 - val_loss: 834.9889
+Epoch 12/50
+ - 0s - loss: 1063.1674 - val_loss: 758.3680
+Epoch 13/50
+ - 0s - loss: 934.4309 - val_loss: 679.8128
+Epoch 14/50
+ - 0s - loss: 801.4682 - val_loss: 599.8564
+Epoch 15/50
+ - 0s - loss: 677.4548 - val_loss: 521.9410
+Epoch 16/50
+ - 0s - loss: 559.0909 - val_loss: 456.5264
+Epoch 17/50
+ - 0s - loss: 465.2495 - val_loss: 395.5914
+Epoch 18/50
+ - 0s - loss: 389.0645 - val_loss: 347.6505
+Epoch 19/50
+ - 0s - loss: 333.0994 - val_loss: 311.2241
+Epoch 20/50
+ - 0s - loss: 295.6752 - val_loss: 281.3162
+Epoch 21/50
+ - 0s - loss: 271.9394 - val_loss: 258.3010
+Epoch 22/50
+ - 0s - loss: 255.3381 - val_loss: 241.2118
+Epoch 23/50
+ - 0s - loss: 244.4215 - val_loss: 228.8426
+Epoch 24/50
+ - 0s - loss: 236.0825 - val_loss: 217.7357
+Epoch 25/50
+ - 0s - loss: 229.0467 - val_loss: 209.7923
+Epoch 26/50
+ - 0s - loss: 223.3436 - val_loss: 203.0567
+Epoch 27/50
+ - 0s - loss: 217.7661 - val_loss: 196.9146
+Epoch 28/50
+ - 0s - loss: 212.7433 - val_loss: 192.7874
+Epoch 29/50
+ - 0s - loss: 208.2650 - val_loss: 187.5191
+Epoch 30/50
+ - 0s - loss: 204.2617 - val_loss: 184.1699
+Epoch 31/50
+ - 0s - loss: 200.0822 - val_loss: 179.7744
+Epoch 32/50
+ - 0s - loss: 196.3688 - val_loss: 176.9143
+Epoch 33/50
+ - 0s - loss: 192.8432 - val_loss: 174.1027
+Epoch 34/50
+ - 0s - loss: 189.6180 - val_loss: 170.2969
+Epoch 35/50
+ - 0s - loss: 186.5371 - val_loss: 167.7279
+Epoch 36/50
+ - 0s - loss: 183.5662 - val_loss: 165.0036
+Epoch 37/50
+ - 0s - loss: 181.0922 - val_loss: 162.0638
+Epoch 38/50
+ - 0s - loss: 178.2988 - val_loss: 161.2352
+Epoch 39/50
+ - 0s - loss: 176.0754 - val_loss: 158.1306
+Epoch 40/50
+ - 0s - loss: 173.4879 - val_loss: 156.0543
+Epoch 41/50
+ - 0s - loss: 171.2700 - val_loss: 154.8183
+Epoch 42/50
+ - 0s - loss: 169.1702 - val_loss: 153.4717
+Epoch 43/50
+ - 0s - loss: 167.2501 - val_loss: 151.9202
+Epoch 44/50
+ - 0s - loss: 165.2298 - val_loss: 150.5667
+Epoch 45/50
+ - 0s - loss: 163.5710 - val_loss: 149.5293
+Epoch 46/50
+ - 0s - loss: 161.9755 - val_loss: 148.7646
+Epoch 47/50
+ - 0s - loss: 160.5665 - val_loss: 146.0714
+Epoch 48/50
+ - 0s - loss: 159.0095 - val_loss: 145.1014
+Epoch 49/50
+ - 0s - loss: 157.4495 - val_loss: 144.1366
+Epoch 50/50
+ - 0s - loss: 156.0422 - val_loss: 143.3904
+Out[29]:
+<keras.callbacks.History at 0x7fb8b01155f8>
+You can refer to this [link](https://keras.io/models/sequential/) to learn about other functions that you can use for prediction or evaluation.
+
+Feel free to vary the following and note what impact each change has on the model's performance:
+
+Increase or decreate number of neurons in hidden layers
+Add more hidden layers
+Increase number of epochs
+Thank you for completing this lab!
+This notebook was created by Anuj Anand . I hope you found this lab interesting and educational. Feel free to contact me if you have any questions!
+
+This notebook is part of a course on Coursera called Introduction to Deep Learning & Neural Networks with Keras. If you accessed this notebook outside the course, you can take this course online by clicking here.
+
+.
